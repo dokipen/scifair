@@ -1,0 +1,168 @@
+/*
+  Blink
+  Turns on an LED on for one second, then off for one second, repeatedly.
+
+  This example code is in the public domain.
+ */
+
+// HT1632 stuff
+// The pins should match up with how you wired things
+#define CS1PIN 52
+#define WRPIN 50
+#define DATAPIN 48
+
+// I think this is rows and columns...
+#define COM_SIZE 16
+#define OUT_SIZE 32
+
+// would make sense because of the following
+#define ADDR_SPACE_SIZE (COM_SIZE*OUT_SIZE/4)
+
+// flag to indicate to the board that the value is updated?
+#define MASK_NEEDS_REWRITING 0b00010000
+
+#define ID_LEN 3
+#define CMD_LEN 8
+#define ADDR_LEN 7
+#define WORD_LEN 4
+
+#define DOT 50
+#define DASH 200
+#define SLEEP 100
+// how long between letters
+#define SPACE 300
+// pin for LED
+#define LED 13
+
+void sig(int ms) {
+  digitalWrite(LED, HIGH);
+  delay(ms);
+  digitalWrite(LED, LOW);
+  delay(SLEEP);
+}
+
+void dot() { sig(DOT); }
+void dash() { sig(DASH); }
+
+void space() {
+  digitalWrite(LED, LOW);    // set the LED off
+  delay(SPACE);
+}
+
+void s() {
+  for (int i = 0; i < 3; i++) {
+    dot();
+  }
+  space();
+}
+
+void o() {
+  for (int i = 0; i < 3; i++) {
+    dash();
+  }
+  space();
+}
+
+char * mem; // buffer for HT1632
+
+#define NOP(); __asm__("nop\n\t");
+
+void writeSingleBit() {
+    digitalWrite(DATAPIN, LOW);
+    NOP();
+    digitalWrite(WRPIN, HIGH);
+    NOP();
+    digitalWrite(WRPIN, LOW);
+}
+
+void writeData(char data, char len) {
+    for (int j=len-1, t = 1 << (len -1); j >= 0; --j, t >>= 1) {
+        digitalWrite(DATAPIN, ((data & t) == 0)?LOW:HIGH);
+        NOP();
+        digitalWrite(WRPIN, HIGH);
+        NOP();
+        digitalWrite(WRPIN, LOW);
+    }
+}
+
+void writeDataRev(char data, char len) {
+    for(int j=0; j<len; ++j){
+        // Set the DATA pin to the correct state
+        digitalWrite(DATAPIN, data & 1);
+        NOP(); // Delay
+        // Raise the WR momentarily to allow the device to capture the data
+        digitalWrite(WRPIN, HIGH);
+        NOP(); // Delay
+        // Lower it again, in preparation for the next cycle.
+        digitalWrite(WRPIN, LOW);
+        data >>= 1;
+    }
+}
+
+void writeCommand(char data) {
+    writeData(data, CMD_LEN);
+    writeSingleBit();
+}
+
+void init_HT1632() {
+  Serial.println("Initializing HT1632");
+  // HT1632 init
+  pinMode(CS1PIN, OUTPUT);
+  // buffer for CS1
+  Serial.println("malloc()");
+  Serial.println(ADDR_SPACE_SIZE);
+  mem = (char *)malloc(ADDR_SPACE_SIZE);
+  // clear the memory
+  /*
+  Serial.println("clear memory");
+  for (int i = 0; i < ADDR_SPACE_SIZE; ++i) {
+    Serial.println(int(i));
+    mem[i] = 0x01 | MASK_NEEDS_REWRITING;
+  }
+  */
+
+  Serial.println("setting up pins");
+  pinMode(WRPIN, OUTPUT);
+  pinMode(DATAPIN, OUTPUT);
+  digitalWrite(CS1PIN, HIGH);
+  digitalWrite(CS1PIN, LOW); // sets CS1PIN as master
+
+  Serial.println("entering command mode");
+  writeData(0b100, ID_LEN); // Command mode
+  Serial.println("SYSDIS");
+  writeCommand(0x00); // turn of system oscil
+  Serial.println("COMS01");
+  writeCommand(0x2C); // COMS11(0x2C) (if this doesn't work. try COMS01(0x24))
+  Serial.println("SYSEN");
+  writeCommand(0x01); // main screen turn on (SYSEN)
+  Serial.println("LEDON");
+  writeCommand(0x03); // LEDON (LED duty cycle generator
+  Serial.println("PWM 16/16 duty");
+  writeCommand(0xA0 | (16 - 1)); // fucked if I know . PWM 16/16 duty
+
+  Serial.println("set CS1 to HIGH");
+  digitalWrite(CS1PIN, HIGH);
+  Serial.println("Done initializing HT1632");
+
+  Serial.println("Try lighting something");
+  digitalWrite(CS1PIN, LOW);
+  writeData(0b101, ID_LEN);  // write mode
+  for (int i = 0; i < ADDR_SPACE_SIZE; ++i) {
+    writeData(i, ADDR_LEN);      // select address
+    writeDataRev(0b1111 | MASK_NEEDS_REWRITING, WORD_LEN); // write some shit
+  }
+  digitalWrite(CS1PIN, HIGH);
+}
+
+void setup() {
+  pinMode(LED, OUTPUT);
+  space(); space();
+  Serial.begin(9600);
+  init_HT1632();
+}
+
+void loop() {
+  Serial.println("loop");
+  s(); o(); s();
+  space();
+}
