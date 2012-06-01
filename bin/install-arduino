@@ -1,0 +1,7 @@
+#!/bin/bash
+ARCH="linux64"
+VERSION="1.0.1"
+
+mkdir -p distfiles
+curl "http://arduino.googlecode.com/files/arduino-${VERSION}-${ARCH}.tgz" > distfiles/arduino-${VERSION}-${ARCH}.tgz
+tar xfz distfiles/arduino-${VERSION}-${ARCH}.tgz
